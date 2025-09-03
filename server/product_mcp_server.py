@@ -168,6 +168,11 @@ async def get_product_details(params: Dict[str, Any]):
     
     return {"products": result, "search_criteria": normalized_params}
 
+@app.get("/health")
+async def health_check():
+    """ヘルスチェックエンドポイント"""
+    return {"status": "healthy", "service": "ProductMaster MCP"}
+
 async def standardize_product_arguments(text_input: str) -> Dict[str, Any]:
     """商品検索引数をLLMで標準化"""
     prompt = f"""
