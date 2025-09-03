@@ -1,0 +1,223 @@
+#!/usr/bin/env python3
+"""
+ProductMaster MCP Server - 商品詳細情報取得API
+Port: 8003
+"""
+
+import asyncio
+import json
+import logging
+import os
+from datetime import datetime
+from typing import Dict, List, Any, Optional
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+import psycopg2
+from psycopg2.extras import RealDictCursor
+import boto3
+
+# ログ設定
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+app = FastAPI(title="ProductMaster MCP Server", version="1.0.0")
+
+# CORS設定
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# データベース接続設定
+DB_CONFIG = {
+    'host': 'localhost',
+    'port': 5432,
+    'database': 'wealthai',
+    'user': 'wealthai_user',
+    'password': 'wealthai123'
+}
+
+# Bedrock設定
+bedrock_client = boto3.client('bedrock-runtime', region_name='us-east-1')
+
+class MCPRequest(BaseModel):
+    jsonrpc: str = "2.0"
+    id: int
+    method: str
+    params: Dict[str, Any] = {}
+
+class MCPResponse(BaseModel):
+    jsonrpc: str = "2.0"
+    id: int
+    result: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+
+def get_db_connection():
+    """データベース接続取得"""
+    return psycopg2.connect(**DB_CONFIG)
+
+async def call_claude(system_prompt: str, user_message: str) -> str:
+    """Claude API呼び出し"""
+    try:
+        body = {
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": 4000,
+            "system": system_prompt,
+            "messages": [{"role": "user", "content": user_message}]
+        }
+        
+        response = bedrock_client.invoke_model(
+            modelId="anthropic.claude-3-sonnet-20240229-v1:0",
+            body=json.dumps(body)
+        )
+        
+        response_body = json.loads(response['body'].read())
+        return response_body['content'][0]['text']
+    except Exception as e:
+        logger.error(f"Claude API error: {e}")
+        return "{}"
+
+async def standardize_product_details_arguments(text_input: str) -> Dict[str, Any]:
+    """商品詳細検索の条件を正規化"""
+    system_prompt = """商品詳細検索の条件を正規化してください。
+
+入力テキストから以下を抽出:
+- 商品コード（複数可能）
+- 商品名での検索
+- 複数商品の場合はOR条件として統合
+
+JSON形式で回答:
+{"product_codes": ["CODE1", "CODE2"], "product_names": ["名前1"], "search_logic": "OR条件の説明"}
+
+例:
+- "商品コード: JP001, JP002" → {"product_codes": ["JP001", "JP002"], "product_names": [], "search_logic": "複数商品コードのOR検索"}
+- "日本国債" → {"product_codes": [], "product_names": ["日本国債"], "search_logic": "商品名での検索"}"""
+    
+    try:
+        response = await call_claude(system_prompt, text_input)
+        return json.loads(response)
+    except:
+        return {"product_codes": [], "product_names": [], "search_logic": "解析失敗"}
+
+@app.get("/")
+async def root():
+    return {"service": "ProductMaster MCP Server", "version": "1.0.0", "protocol": "JSON-RPC 2.0 over HTTP"}
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+
+@app.get("/tools/descriptions")
+async def get_tool_descriptions():
+    """AIChat用ツール情報（1ツール・text_input対応）"""
+    return {
+        "tools": [
+            {
+                "name": "get_product_details",
+                "description": "特定商品の詳細情報を取得",
+                "usage_context": "商品について詳しく知りたい、商品コードや商品名から詳細を調べたい時に使用",
+                "parameters": {
+                    "text_input": {"type": "string", "description": "商品指定のテキスト（商品コード、商品名など）"}
+                }
+            }
+        ]
+    }
+
+@app.post("/mcp")
+async def mcp_endpoint(request: MCPRequest):
+    """MCP エンドポイント"""
+    try:
+        if request.method == "tools/call":
+            tool_name = request.params.get("name")
+            arguments = request.params.get("arguments", {})
+            
+            if tool_name == "get_product_details":
+                result = await get_product_details(arguments)
+                return MCPResponse(id=request.id, result=result)
+            else:
+                return MCPResponse(id=request.id, error=f"Unknown tool: {tool_name}")
+        
+        return MCPResponse(id=request.id, error="Unsupported method")
+    except Exception as e:
+        logger.error(f"MCP endpoint error: {e}")
+        return MCPResponse(id=request.id, error=str(e))
+
+async def get_product_details(params: Dict[str, Any]):
+    """商品詳細取得（text_input対応・LLM正規化）"""
+    text_input = params.get("text_input", "")
+    if not text_input:
+        raise HTTPException(status_code=400, detail="text_input is required")
+    
+    # LLM正規化処理
+    normalized_params = await standardize_product_details_arguments(text_input)
+    
+    conn = get_db_connection()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    
+    # 正規化されたパラメータでSQL構築
+    product_codes = normalized_params.get("product_codes", [])
+    product_names = normalized_params.get("product_names", [])
+    
+    conditions = []
+    query_params = []
+    
+    # 商品コード条件
+    if product_codes:
+        placeholders = ",".join(["%s"] * len(product_codes))
+        conditions.append(f"product_code IN ({placeholders})")
+        query_params.extend(product_codes)
+    
+    # 商品名条件
+    if product_names:
+        name_conditions = []
+        for name in product_names:
+            name_conditions.append("product_name ILIKE %s")
+            query_params.append(f"%{name}%")
+        if name_conditions:
+            conditions.append(f"({' OR '.join(name_conditions)})")
+    
+    if not conditions:
+        return {
+            "success": False,
+            "error": "商品コードまたは商品名が特定できませんでした",
+            "normalized_params": normalized_params
+        }
+    
+    query = f"""
+    SELECT product_code, product_name, product_type, currency, description,
+           issue_date, maturity_date, coupon_rate, face_value, market_price,
+           rating, issuer, created_at, updated_at
+    FROM products
+    WHERE {' OR '.join(conditions)}
+    ORDER BY product_type, product_code
+    """
+    
+    try:
+        cursor.execute(query, query_params)
+        results = cursor.fetchall()
+        
+        return {
+            "success": True,
+            "data": [dict(row) for row in results],
+            "count": len(results),
+            "normalized_params": normalized_params,
+            "query_used": query
+        }
+    except Exception as e:
+        logger.error(f"Database error in get_product_details: {e}")
+        return {
+            "success": False,
+            "error": str(e),
+            "normalized_params": normalized_params
+        }
+    finally:
+        cursor.close()
+        conn.close()
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8003)
