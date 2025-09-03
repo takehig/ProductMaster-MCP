@@ -276,10 +276,6 @@ JSON形式で回答:
 async def root():
     return {"service": "ProductMaster MCP Server", "version": "1.0.0", "protocol": "JSON-RPC 2.0 over HTTP"}
 
-@app.get("/health")
-async def health_check():
-    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
-
 @app.get("/tools/descriptions")
 async def get_tool_descriptions():
     """AIChat用ツール情報（1ツール・text_input対応）"""
