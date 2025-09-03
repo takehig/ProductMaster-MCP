@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ProductMaster MCP Server - 商品詳細情報取得API
+ProductMaster MCP Server - 商品詳細情報取得API（1ツール体制）
 Port: 8003
 """
 
@@ -21,7 +21,7 @@ import boto3
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="ProductMaster MCP Server", version="1.0.0")
+app = FastAPI(title="ProductMaster MCP Server", version="2.0.0")
 
 # CORS設定
 app.add_middleware(
@@ -48,6 +48,170 @@ class MCPRequest(BaseModel):
     jsonrpc: str = "2.0"
     id: int
     method: str
+    params: Optional[Dict[str, Any]] = None
+
+class MCPResponse(BaseModel):
+    jsonrpc: str = "2.0"
+    id: int
+    result: Optional[Any] = None
+    error: Optional[str] = None
+
+def get_db_connection():
+    """データベース接続を取得"""
+    return psycopg2.connect(**DB_CONFIG)
+
+@app.get("/tools/descriptions")
+async def get_tool_descriptions():
+    """AIChat用ツール情報（1ツール・text_input対応）"""
+    return {
+        "tools": [
+            {
+                "name": "get_product_details",
+                "description": "商品の詳細情報を取得",
+                "usage_context": "特定の商品について詳しく知りたい、商品コードから詳細を調べたい時に使用",
+                "parameters": {
+                    "text_input": {"type": "string", "description": "商品指定のテキスト（商品コード、商品名など）"}
+                }
+            }
+        ]
+    }
+
+@app.get("/tools")
+async def list_available_tools():
+    """MCPプロトコル準拠のツール一覧（1ツール）"""
+    return {
+        "tools": [
+            {
+                "name": "get_product_details",
+                "description": "商品の詳細情報を取得します",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "text_input": {"type": "string", "description": "商品指定のテキスト（商品コード、商品名など）"}
+                    },
+                    "required": ["text_input"]
+                }
+            }
+        ]
+    }
+
+@app.post("/mcp")
+async def mcp_endpoint(request: MCPRequest):
+    """MCPプロトコルエンドポイント"""
+    try:
+        method = request.method
+        params = request.params or {}
+        
+        if method == "tools/call":
+            tool_name = params.get("name")
+            arguments = params.get("arguments", {})
+            
+            if tool_name == "get_product_details":
+                result = await get_product_details(arguments)
+                return MCPResponse(id=request.id, result=result)
+            else:
+                return MCPResponse(id=request.id, error=f"Unknown tool: {tool_name}")
+                
+        elif method == "tools/list":
+            result = await list_available_tools()
+            return MCPResponse(id=request.id, result=result)
+        else:
+            return MCPResponse(id=request.id, error=f"Unknown method: {method}")
+            
+    except Exception as e:
+        logger.error(f"MCP endpoint error: {e}")
+        return MCPResponse(id=request.id, error=str(e))
+
+async def get_product_details(params: Dict[str, Any]):
+    """商品詳細情報取得（text_input対応・LLM正規化）"""
+    text_input = params.get("text_input", "")
+    if not text_input:
+        raise HTTPException(status_code=400, detail="text_input is required")
+    
+    # LLM正規化処理
+    normalized_params = await standardize_product_arguments(text_input)
+    product_code = normalized_params.get("product_code")
+    product_name = normalized_params.get("product_name")
+    
+    conn = get_db_connection()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    
+    query = "SELECT * FROM products WHERE 1=1"
+    query_params = []
+    
+    if product_code:
+        query += " AND product_code = %s"
+        query_params.append(product_code)
+    elif product_name:
+        query += " AND product_name ILIKE %s"
+        query_params.append(f"%{product_name}%")
+    
+    cursor.execute(query, query_params)
+    products = cursor.fetchall()
+    conn.close()
+    
+    if not products:
+        return {"message": "商品が見つかりませんでした", "search_criteria": normalized_params}
+    
+    result = []
+    for product in products:
+        result.append({
+            "product_code": product['product_code'],
+            "product_name": product['product_name'],
+            "product_type": product['product_type'],
+            "currency": product['currency'],
+            "description": product['description'],
+            "maturity_date": str(product['maturity_date']) if product['maturity_date'] else None,
+            "interest_rate": float(product['interest_rate']) if product['interest_rate'] else None,
+            "risk_level": product['risk_level']
+        })
+    
+    return {"products": result, "search_criteria": normalized_params}
+
+async def standardize_product_arguments(text_input: str) -> Dict[str, Any]:
+    """商品検索引数をLLMで標準化"""
+    prompt = f"""
+以下のテキストから商品検索に必要な情報を抽出してJSONで返してください。
+
+入力テキスト: "{text_input}"
+
+抽出ルール:
+1. 商品コード（JP001のような形式）があれば product_code に設定
+2. 商品名があれば product_name に設定
+3. どちらも不明な場合は product_name に入力テキストをそのまま設定
+
+出力形式（JSON）:
+{{"product_code": "商品コード または null", "product_name": "商品名 または null"}}
+"""
+    
+    try:
+        response = bedrock_client.invoke_model(
+            modelId='anthropic.claude-3-sonnet-20240229-v1:0',
+            body=json.dumps({
+                "anthropic_version": "bedrock-2023-05-31",
+                "max_tokens": 200,
+                "messages": [{"role": "user", "content": prompt}]
+            })
+        )
+        
+        response_body = json.loads(response['body'].read())
+        content = response_body['content'][0]['text']
+        
+        # JSON抽出
+        import re
+        json_match = re.search(r'\{[^}]+\}', content)
+        if json_match:
+            return json.loads(json_match.group())
+        
+    except Exception as e:
+        logger.error(f"LLM standardization error: {e}")
+    
+    # フォールバック
+    return {"product_code": None, "product_name": text_input}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8003)
     params: Dict[str, Any] = {}
 
 class MCPResponse(BaseModel):
