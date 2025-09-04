@@ -151,7 +151,9 @@ async def mcp_endpoint(request: MCPRequest):
             
             if tool_name == "get_product_details":
                 result = await get_product_details(arguments)
-                return MCPResponse(id=request.id, result=result)
+                # get_product_detailsは既にMCPResponseを返すので、idだけ設定
+                result.id = request.id
+                return result
             else:
                 return MCPResponse(id=request.id, error=f"Unknown tool: {tool_name}")
                 
@@ -398,7 +400,9 @@ async def mcp_endpoint(request: MCPRequest):
             
             if tool_name == "get_product_details":
                 result = await get_product_details(arguments)
-                return MCPResponse(id=request.id, result=result)
+                # get_product_detailsは既にMCPResponseを返すので、idだけ設定
+                result.id = request.id
+                return result
             else:
                 return MCPResponse(id=request.id, error=f"Unknown tool: {tool_name}")
         
