@@ -8,6 +8,7 @@ import asyncio
 import json
 import logging
 import os
+import time
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 from fastapi import FastAPI, HTTPException
@@ -55,6 +56,48 @@ class MCPResponse(BaseModel):
     id: int
     result: Optional[Any] = None
     error: Optional[str] = None
+    debug_response: Optional[Dict[str, Any]] = None
+
+async def format_products_to_text(products_array: List[Dict]) -> str:
+    """商品配列をテキスト形式に変換（Standardizeの逆）"""
+    if not products_array:
+        return "商品情報: 該当する商品はありませんでした。"
+    
+    system_prompt = """商品検索の結果配列を、後続のツールが使いやすいシンプルなテキスト形式に変換してください。
+
+以下の形式で出力:
+```
+商品情報:
+- 商品コード: JP001, 商品名: ソフトバンク社債, 種類: bond, 通貨: JPY, 満期日: 2026-12-15
+- 商品コード: US002, 商品名: 米国債, 種類: bond, 通貨: USD, 満期日: 2027-06-30
+
+合計: 2件の商品
+```
+
+簡潔で読みやすく、次のツールが商品情報を理解しやすい形式にしてください。"""
+    
+    try:
+        array_text = json.dumps(products_array, ensure_ascii=False, indent=2)
+        
+        bedrock = boto3.client('bedrock-runtime', region_name='us-east-1')
+        body = json.dumps({
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": 1000,
+            "system": system_prompt,
+            "messages": [{"role": "user", "content": array_text}]
+        })
+        
+        response = bedrock.invoke_model(
+            body=body,
+            modelId='anthropic.claude-3-sonnet-20240229-v1:0',
+            accept='application/json',
+            contentType='application/json'
+        )
+        
+        response_body = json.loads(response.get('body').read())
+        return response_body['content'][0]['text']
+    except Exception as e:
+        return f"商品情報のテキスト化に失敗: {str(e)}"
 
 def get_db_connection():
     """データベース接続を取得"""
@@ -124,12 +167,26 @@ async def mcp_endpoint(request: MCPRequest):
 
 async def get_product_details(params: Dict[str, Any]):
     """商品詳細情報取得（text_input対応・LLM正規化）"""
+    start_time = time.time()
     text_input = params.get("text_input", "")
+    
     if not text_input:
-        raise HTTPException(status_code=400, detail="text_input is required")
+        error_message = "text_inputが必要です"
+        tool_debug = {
+            "executed_query": "N/A (text_input未提供)",
+            "executed_query_results": error_message,
+            "format_prompt": "N/A (text_input未提供)",
+            "format_response": "N/A (text_input未提供)",
+            "standardize_prompt": "N/A (text_input未提供)",
+            "standardize_response": "N/A (text_input未提供)",
+            "standardize_parameter": "N/A (text_input未提供)",
+            "execution_time_ms": round((time.time() - start_time) * 1000, 2),
+            "results_count": 0
+        }
+        return MCPResponse(result=error_message, debug_response=tool_debug)
     
     # LLM正規化処理
-    normalized_params = await standardize_product_arguments(text_input)
+    normalized_params, full_prompt_text, standardize_response, standardize_parameter = await standardize_product_arguments(text_input)
     product_code = normalized_params.get("product_code")
     product_name = normalized_params.get("product_name")
     
@@ -146,39 +203,72 @@ async def get_product_details(params: Dict[str, Any]):
         query += " AND product_name ILIKE %s"
         query_params.append(f"%{product_name}%")
     
-    cursor.execute(query, query_params)
-    products = cursor.fetchall()
-    conn.close()
-    
-    if not products:
-        return {"message": "商品が見つかりませんでした", "search_criteria": normalized_params}
-    
-    result = []
-    for product in products:
-        result.append({
-            "product_code": product['product_code'],
-            "product_name": product['product_name'],
-            "product_type": product['product_type'],
-            "currency": product['currency'],
-            "description": product['description'],
-            "maturity_date": str(product['maturity_date']) if product['maturity_date'] else None,
-            "interest_rate": float(product['interest_rate']) if product['interest_rate'] else None,
-            "risk_level": product['risk_level']
-        })
-    
-    return {"products": result, "search_criteria": normalized_params}
+    try:
+        cursor.execute(query, query_params)
+        products = cursor.fetchall()
+        
+        conn.close()
+        
+        # 配列作成
+        result_array = []
+        for product in products:
+            result_array.append({
+                "product_code": product['product_code'],
+                "product_name": product['product_name'],
+                "product_type": product['product_type'],
+                "currency": product['currency'],
+                "description": product['description'],
+                "maturity_date": str(product['maturity_date']) if product['maturity_date'] else None,
+                "interest_rate": float(product['interest_rate']) if product['interest_rate'] else None,
+                "risk_level": product['risk_level']
+            })
+        
+        # テキスト化
+        result_text = await format_products_to_text(result_array)
+        
+        execution_time = time.time() - start_time
+        
+        # debug_response作成
+        tool_debug = {
+            "executed_query": query,
+            "executed_query_results": result_array,  # デバッグ用は配列
+            "format_prompt": "商品配列をテキスト形式に変換",
+            "format_response": result_text,
+            "standardize_prompt": full_prompt_text,
+            "standardize_response": standardize_response,
+            "standardize_parameter": standardize_parameter,
+            "execution_time_ms": round(execution_time * 1000, 2),
+            "results_count": len(result_array)
+        }
+        
+        return MCPResponse(result=result_text, debug_response=tool_debug)
+        
+    except Exception as sql_error:
+        conn.close()
+        error_message = f"SQLエラー: {str(sql_error)}"
+        
+        tool_debug = {
+            "executed_query": query,
+            "executed_query_results": error_message,
+            "format_prompt": "N/A (SQLエラーのため未実行)",
+            "format_response": "N/A (SQLエラーのため未実行)",
+            "standardize_prompt": full_prompt_text,
+            "standardize_response": standardize_response,
+            "standardize_parameter": standardize_parameter,
+            "execution_time_ms": round((time.time() - start_time) * 1000, 2),
+            "results_count": 0
+        }
+        
+        return MCPResponse(result=error_message, debug_response=tool_debug)
 
 @app.get("/health")
 async def health_check():
     """ヘルスチェックエンドポイント"""
     return {"status": "healthy", "service": "ProductMaster MCP"}
 
-async def standardize_product_arguments(text_input: str) -> Dict[str, Any]:
+async def standardize_product_arguments(text_input: str) -> tuple[Dict[str, Any], str, str, str]:
     """商品検索引数をLLMで標準化"""
-    prompt = f"""
-以下のテキストから商品検索に必要な情報を抽出してJSONで返してください。
-
-入力テキスト: "{text_input}"
+    system_prompt = """以下のテキストから商品検索に必要な情報を抽出してJSONで返してください。
 
 抽出ルール:
 1. 商品コード（JP001のような形式）があれば product_code に設定
@@ -186,33 +276,45 @@ async def standardize_product_arguments(text_input: str) -> Dict[str, Any]:
 3. どちらも不明な場合は product_name に入力テキストをそのまま設定
 
 出力形式（JSON）:
-{{"product_code": "商品コード または null", "product_name": "商品名 または null"}}
-"""
+{"product_code": "商品コード または null", "product_name": "商品名 または null"}"""
+    
+    # 合成プロンプトテキスト作成
+    full_prompt_text = f"{system_prompt}\n\nUser Input: {text_input}"
     
     try:
-        response = bedrock_client.invoke_model(
+        bedrock = boto3.client('bedrock-runtime', region_name='us-east-1')
+        body = json.dumps({
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": 200,
+            "system": system_prompt,
+            "messages": [{"role": "user", "content": text_input}]
+        })
+        
+        response = bedrock.invoke_model(
+            body=body,
             modelId='anthropic.claude-3-sonnet-20240229-v1:0',
-            body=json.dumps({
-                "anthropic_version": "bedrock-2023-05-31",
-                "max_tokens": 200,
-                "messages": [{"role": "user", "content": prompt}]
-            })
+            accept='application/json',
+            contentType='application/json'
         )
         
-        response_body = json.loads(response['body'].read())
-        content = response_body['content'][0]['text']
+        response_body = json.loads(response.get('body').read())
+        raw_response = response_body['content'][0]['text']
         
         # JSON抽出
         import re
-        json_match = re.search(r'\{[^}]+\}', content)
+        json_match = re.search(r'\{[^}]+\}', raw_response)
         if json_match:
-            return json.loads(json_match.group())
+            standardized = json.loads(json_match.group())
+            return standardized, full_prompt_text, raw_response, standardized
+        else:
+            error_message = f"LLM応答のJSONパース失敗: No JSON found in response"
+            fallback = {"product_code": None, "product_name": text_input}
+            return fallback, full_prompt_text, raw_response, error_message
         
     except Exception as e:
-        logger.error(f"LLM standardization error: {e}")
-    
-    # フォールバック
-    return {"product_code": None, "product_name": text_input}
+        error_message = f"LLM応答のJSONパース失敗: {str(e)}"
+        fallback = {"product_code": None, "product_name": text_input}
+        return fallback, full_prompt_text, raw_response if 'raw_response' in locals() else "LLM呼び出し失敗", error_message
 
 if __name__ == "__main__":
     import uvicorn
