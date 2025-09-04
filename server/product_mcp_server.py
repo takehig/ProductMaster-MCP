@@ -205,50 +205,14 @@ async def get_product_details(params: Dict[str, Any]):
         query += " AND product_name ILIKE %s"
         query_params.append(f"%{product_name}%")
     
+    # SQL実行部分
     try:
         logger.info(f"[DEBUG] Executing query: {query}")
         logger.info(f"[DEBUG] Query params: {query_params}")
         cursor.execute(query, query_params)
         products = cursor.fetchall()
         logger.info(f"[DEBUG] Products fetched: {len(products)} rows")
-        
         conn.close()
-        
-        # 配列作成
-        result_array = []
-        for product in products:
-            logger.info(f"[DEBUG] Processing product: {list(product.keys())}")
-            result_array.append({
-                "product_code": product['product_code'],
-                "product_name": product['product_name'],
-                "product_type": product['product_type'],
-                "currency": product['currency'],
-                "description": product['description'],
-                "maturity_date": str(product['maturity_date']) if product['maturity_date'] else None,
-                "interest_rate": float(product['interest_rate']) if product['interest_rate'] else None,
-                "risk_level": product['risk_level']
-            })
-        
-        # テキスト化
-        result_text = await format_products_to_text(result_array)
-        
-        execution_time = time.time() - start_time
-        
-        # debug_response作成
-        tool_debug = {
-            "executed_query": query,
-            "executed_query_results": result_array,  # デバッグ用は配列
-            "format_prompt": "商品配列をテキスト形式に変換",
-            "format_response": result_text,
-            "standardize_prompt": full_prompt_text,
-            "standardize_response": standardize_response,
-            "standardize_parameter": standardize_parameter,
-            "execution_time_ms": round(execution_time * 1000, 2),
-            "results_count": len(result_array)
-        }
-        
-        return MCPResponse(result=result_text, debug_response=tool_debug)
-        
     except Exception as sql_error:
         conn.close()
         error_message = f"SQLエラー: {str(sql_error)}"
@@ -262,10 +226,83 @@ async def get_product_details(params: Dict[str, Any]):
             "standardize_response": standardize_response,
             "standardize_parameter": standardize_parameter,
             "execution_time_ms": round((time.time() - start_time) * 1000, 2),
-            "results_count": 0
+            "results_count": 0,
+            "error_type": "SQL_ERROR"
         }
         
         return MCPResponse(result=error_message, debug_response=tool_debug)
+    
+    # 配列作成部分
+    try:
+        result_array = []
+        for product in products:
+            logger.info(f"[DEBUG] Processing product: {list(product.keys())}")
+            result_array.append({
+                "product_code": product['product_code'],
+                "product_name": product['product_name'],
+                "product_type": product['product_type'],
+                "currency": product['currency'],
+                "description": product['description'],
+                "maturity_date": str(product['maturity_date']) if product['maturity_date'] else None,
+                "interest_rate": float(product['interest_rate']) if product['interest_rate'] else None,
+                "risk_level": product['risk_level']
+            })
+    except Exception as parse_error:
+        error_message = f"配列パースエラー: {str(parse_error)}"
+        
+        tool_debug = {
+            "executed_query": query,
+            "executed_query_results": f"SQL成功({len(products)}件) → 配列パースエラー: {str(parse_error)}",
+            "format_prompt": "N/A (配列パースエラーのため未実行)",
+            "format_response": "N/A (配列パースエラーのため未実行)",
+            "standardize_prompt": full_prompt_text,
+            "standardize_response": standardize_response,
+            "standardize_parameter": standardize_parameter,
+            "execution_time_ms": round((time.time() - start_time) * 1000, 2),
+            "results_count": 0,
+            "error_type": "ARRAY_PARSE_ERROR"
+        }
+        
+        return MCPResponse(result=error_message, debug_response=tool_debug)
+    
+    # テキスト化部分
+    try:
+        result_text = await format_products_to_text(result_array)
+    except Exception as format_error:
+        error_message = f"テキスト化エラー: {str(format_error)}"
+        
+        tool_debug = {
+            "executed_query": query,
+            "executed_query_results": result_array,
+            "format_prompt": "商品配列をテキスト形式に変換",
+            "format_response": error_message,
+            "standardize_prompt": full_prompt_text,
+            "standardize_response": standardize_response,
+            "standardize_parameter": standardize_parameter,
+            "execution_time_ms": round((time.time() - start_time) * 1000, 2),
+            "results_count": len(result_array),
+            "error_type": "FORMAT_ERROR"
+        }
+        
+        return MCPResponse(result=error_message, debug_response=tool_debug)
+    
+    # 正常処理
+    execution_time = time.time() - start_time
+    
+    tool_debug = {
+        "executed_query": query,
+        "executed_query_results": result_array,  # デバッグ用は配列
+        "format_prompt": "商品配列をテキスト形式に変換",
+        "format_response": result_text,
+        "standardize_prompt": full_prompt_text,
+        "standardize_response": standardize_response,
+        "standardize_parameter": standardize_parameter,
+        "execution_time_ms": round(execution_time * 1000, 2),
+        "results_count": len(result_array),
+        "error_type": "NONE"
+    }
+    
+    return MCPResponse(result=result_text, debug_response=tool_debug)
 
 @app.get("/health")
 async def health_check():
