@@ -206,14 +206,18 @@ async def get_product_details(params: Dict[str, Any]):
         query_params.append(f"%{product_name}%")
     
     try:
+        print(f"[DEBUG] Executing query: {query}")
+        print(f"[DEBUG] Query params: {query_params}")
         cursor.execute(query, query_params)
         products = cursor.fetchall()
+        print(f"[DEBUG] Products fetched: {len(products)} rows")
         
         conn.close()
         
         # 配列作成
         result_array = []
         for product in products:
+            print(f"[DEBUG] Processing product: {product.keys()}")
             result_array.append({
                 "product_code": product['product_code'],
                 "product_name": product['product_name'],
