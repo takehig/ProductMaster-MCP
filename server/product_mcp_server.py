@@ -321,12 +321,6 @@ if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8003)
     params: Dict[str, Any] = {}
 
-class MCPResponse(BaseModel):
-    jsonrpc: str = "2.0"
-    id: int
-    result: Optional[Dict[str, Any]] = None
-    error: Optional[str] = None
-
 def get_db_connection():
     """データベース接続取得"""
     return psycopg2.connect(**DB_CONFIG)
