@@ -274,16 +274,31 @@ async def health_check():
 
 async def standardize_product_arguments(text_input: str) -> tuple[Dict[str, Any], str, str, str]:
     """商品検索引数をLLMで標準化"""
-    system_prompt = """以下のテキストから商品検索に必要な情報を抽出してJSONで返してください。
+    system_prompt = """あなたは金融商品名抽出の専門家です。入力テキストから純粋な商品名のみを抽出してください。
 
-ここで言う商品名とは金融商品のことで、株式や社債、国債のことを指します。
+## 抽出ルール
+1. 商品コード（JP001、US002等）があれば product_code に設定
+2. 商品名から修飾語句を除去して純粋な商品名のみ抽出
+3. 企業名+商品種別の組み合わせを認識
 
-抽出ルール:
-1. 商品コード（JP001のような形式）があれば product_code に設定
-2. 商品名があれば product_name に設定
-3. どちらも不明な場合は product_name に入力テキストをそのまま設定
+## 除去すべき修飾語句
+- "の詳細"、"について"、"を教えて"、"の情報"、"を知りたい"
+- "に関して"、"はどう"、"とは"、"って何"
 
-出力形式（JSON）:
+## 商品名認識パターン
+- [企業名] + [社債/国債/株式/投信] → 企業名+商品種別
+- [国名] + [国債] → 国名+国債
+- [ファンド名] + [投信/ファンド] → ファンド名
+
+## 変換例
+入力: "ソフトバンク社債の詳細を教えて" → 出力: {"product_code": null, "product_name": "ソフトバンク社債"}
+入力: "JP001について知りたい" → 出力: {"product_code": "JP001", "product_name": null}
+入力: "日本国債10年の情報" → 出力: {"product_code": null, "product_name": "日本国債10年"}
+入力: "米国債はどうですか" → 出力: {"product_code": null, "product_name": "米国債"}
+入力: "トヨタ株式を教えて" → 出力: {"product_code": null, "product_name": "トヨタ株式"}
+
+## 出力形式（必須）
+JSON形式のみで回答してください。説明文は不要です。
 {"product_code": "商品コード または null", "product_name": "商品名 または null"}"""
     
     # 合成プロンプトテキスト作成
