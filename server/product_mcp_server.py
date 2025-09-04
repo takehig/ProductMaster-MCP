@@ -272,6 +272,8 @@ async def standardize_product_arguments(text_input: str) -> tuple[Dict[str, Any]
     """商品検索引数をLLMで標準化"""
     system_prompt = """以下のテキストから商品検索に必要な情報を抽出してJSONで返してください。
 
+ここで言う商品名とは金融商品のことで、株式や社債、国債のことを指します。
+
 抽出ルール:
 1. 商品コード（JP001のような形式）があれば product_code に設定
 2. 商品名があれば product_name に設定
