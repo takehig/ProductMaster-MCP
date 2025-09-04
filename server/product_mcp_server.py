@@ -241,11 +241,11 @@ async def get_product_details(params: Dict[str, Any]):
                 "product_code": product['product_code'],
                 "product_name": product['product_name'],
                 "product_type": product['product_type'],
-                "currency": product['currency'],
-                "description": product['description'],
-                "maturity_date": str(product['maturity_date']) if product['maturity_date'] else None,
-                "interest_rate": float(product['interest_rate']) if product['interest_rate'] else None,
-                "risk_level": product['risk_level']
+                "currency": product.get('currency', 'N/A'),
+                "description": product.get('description', 'N/A'),  # 安全なアクセス
+                "maturity_date": str(product['maturity_date']) if product.get('maturity_date') else None,
+                "interest_rate": float(product['interest_rate']) if product.get('interest_rate') else None,
+                "risk_level": product.get('risk_level', 'N/A')
             })
     except Exception as parse_error:
         error_message = f"配列パースエラー: {str(parse_error)}"
