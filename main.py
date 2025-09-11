@@ -12,8 +12,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from config import SERVER_CONFIG
-from models import MCPRequest, MCPResponse, ToolDescription
-from tools.product_search import get_product_details
+from models import MCPRequest, MCPResponse
+from tools_manager import ToolsManager
 
 # ログ設定
 logging.basicConfig(level=logging.INFO)
@@ -24,6 +24,9 @@ app = FastAPI(
     version=SERVER_CONFIG["version"]
 )
 
+# ツール管理インスタンス
+tools_manager = ToolsManager()
+
 # CORS設定
 app.add_middleware(
     CORSMiddleware,
@@ -32,25 +35,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-async def get_tool_descriptions():
-    """利用可能なツールの説明を取得"""
-    return [
-        ToolDescription(
-            name="get_product_details",
-            description="商品詳細情報を検索・取得します。商品コード、商品名、満期日などで検索可能です。",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "text_input": {
-                        "type": "string",
-                        "description": "検索条件（商品コード、商品名、満期日など）"
-                    }
-                },
-                "required": ["text_input"]
-            }
-        )
-    ]
 
 @app.get("/")
 async def root():
@@ -63,53 +47,113 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "service": "ProductMaster-MCP", "timestamp": datetime.now().isoformat()}
-
-@app.get("/tools")
-async def list_available_tools():
-    """利用可能なツール一覧"""
-    tools = await get_tool_descriptions()
-    return {"tools": [tool.dict() for tool in tools]}
+    return {
+        "status": "healthy", 
+        "service": "ProductMaster-MCP", 
+        "timestamp": datetime.now().isoformat()
+    }
 
 @app.post("/mcp")
 async def mcp_endpoint(request: MCPRequest):
-    """MCP プロトコルエンドポイント"""
+    """MCPプロトコルエンドポイント"""
+    print(f"[MCP_ENDPOINT] === REQUEST START ===")
+    print(f"[MCP_ENDPOINT] Request received: {request}")
+    
     try:
-        if request.method == "tools/list":
-            tools = await get_tool_descriptions()
-            return {
-                "jsonrpc": "2.0",
-                "id": request.id,
-                "result": {"tools": [tool.dict() for tool in tools]}
-            }
+        method = request.method
+        params = request.params
         
-        elif request.method == "tools/call":
-            tool_name = request.params.get("name") if request.params else None
-            tool_arguments = request.params.get("arguments", {}) if request.params else {}
-            
-            if tool_name == "get_product_details":
-                result = await get_product_details(tool_arguments)
-                return {
-                    "jsonrpc": "2.0",
-                    "id": request.id,
-                    "result": {
-                        "content": [{"type": "text", "text": result.result}],
-                        "_meta": result.debug_response
+        if method == "initialize":
+            # 初期化
+            return MCPResponse(
+                id=request.id,
+                result={
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {},
+                    "serverInfo": {
+                        "name": SERVER_CONFIG["title"],
+                        "version": SERVER_CONFIG["version"]
                     }
                 }
+            )
+        
+        elif method == "tools/list":
+            # ツール一覧（一元管理から取得）
+            return MCPResponse(
+                id=request.id,
+                result={
+                    "tools": tools_manager.get_mcp_tools_format()
+                }
+            )
+        
+        elif method == "tools/call":
+            # ツール実行
+            tool_name = params.get("name")
+            arguments = params.get("arguments", {})
+            
+            print(f"[MCP_ENDPOINT] Tool name: {tool_name}")
+            print(f"[MCP_ENDPOINT] Arguments: {arguments}")
+            
+            # 動的ツール実行
+            if tools_manager.is_valid_tool(tool_name):
+                print(f"[MCP_ENDPOINT] Calling {tool_name}")
+                tool_function = tools_manager.get_tool_function(tool_name)
+                
+                if tool_function:
+                    tool_response = await tool_function(arguments)
+                    tool_response.id = request.id
+                    return tool_response
+                else:
+                    error_msg = f"Tool function not found: {tool_name}"
+                    return MCPResponse(
+                        id=request.id,
+                        result=error_msg,
+                        error=error_msg
+                    )
             else:
-                raise HTTPException(status_code=400, detail=f"Unknown tool: {tool_name}")
+                error_msg = f"Unknown tool: {tool_name}"
+                return MCPResponse(
+                    id=request.id,
+                    result=error_msg,
+                    error=error_msg
+                )
         
         else:
-            raise HTTPException(status_code=400, detail=f"Unknown method: {request.method}")
+            error_msg = f"Unknown method: {method}"
+            return MCPResponse(
+                id=request.id,
+                result=error_msg,
+                error=error_msg
+            )
     
     except Exception as e:
-        logger.error(f"MCP endpoint error: {e}")
-        return {
-            "jsonrpc": "2.0",
-            "id": request.id,
-            "error": {"code": -32603, "message": str(e)}
-        }
+        print(f"[MCP_ENDPOINT] EXCEPTION CAUGHT!")
+        print(f"[MCP_ENDPOINT] Exception: {e}")
+        
+        return MCPResponse(
+            id=request.id,
+            result=f"サーバーエラー: {str(e)}",
+            debug_response={
+                "error": str(e),
+                "error_type": type(e).__name__,
+                "method": method,
+                "params": params
+            }
+        )
+
+@app.get("/tools")
+async def list_available_tools():
+    """MCPプロトコル準拠のツール一覧"""
+    return {
+        "tools": tools_manager.get_tools_list()
+    }
+
+@app.get("/tools/descriptions")
+async def get_tool_descriptions():
+    """ツール詳細情報（AIChat用）"""
+    return {
+        "tools": tools_manager.get_tools_descriptions()
+    }
 
 if __name__ == "__main__":
     import uvicorn

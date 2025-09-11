@@ -1,0 +1,17 @@
+{
+    "tools": [
+        {
+            "name": "get_product_details",
+            "description": "商品詳細情報を取得",
+            "usage_context": "特定の商品の詳細情報を知りたい、商品の仕様や特徴を確認したい時に使用",
+            "parameters": {
+                "text_input": {
+                    "type": "string",
+                    "description": "商品名、商品コード、または商品に関する検索条件"
+                }
+            },
+            "function_name": "get_product_details",
+            "module_path": "tools.product_search"
+        }
+    ]
+}
