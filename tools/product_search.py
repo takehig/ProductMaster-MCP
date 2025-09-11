@@ -12,7 +12,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 async def standardize_product_search_arguments(raw_input: str) -> Tuple[Dict[str, Any], str, str, str]:
-    """商品検索の引数を標準化（LLMベース）"""
+    """商品検索の引数を標準化（LLMベース・統一パターン）"""
     print(f"[standardize_product_search_arguments] Raw input: {raw_input}")
     
     # システムプロンプト（将来的にはデータベース化）
@@ -79,7 +79,7 @@ async def format_product_search_results(products: list) -> str:
     return result_text
 
 async def get_product_details(params: Dict[str, Any]) -> MCPResponse:
-    """商品詳細情報取得（統一パターン）"""
+    """商品詳細情報取得（統一パターン・簡潔版）"""
     start_time = time.time()
     
     print(f"[get_product_details] === FUNCTION START ===")
@@ -93,9 +93,8 @@ async def get_product_details(params: Dict[str, Any]) -> MCPResponse:
                 debug_response={"error": "text_input未提供", "execution_time_ms": 0}
             )
         
-        # 引数標準化処理
+        # 引数標準化処理（関数化）
         standardized_params, full_prompt_text, standardize_response, standardize_parameter = await standardize_product_search_arguments(text_input)
-        print(f"[get_product_details] Standardized params: {standardized_params}")
         
         if not standardized_params:
             return MCPResponse(
@@ -107,43 +106,15 @@ async def get_product_details(params: Dict[str, Any]) -> MCPResponse:
                 }
             )
         
-        # データベース検索
-        conn = get_db_connection()
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        
-        query = "SELECT * FROM products WHERE 1=1"
-        query_params = []
-        
-        # 検索条件構築
-        if standardized_params.get("product_code"):
-            query += " AND product_code = %s"
-            query_params.append(standardized_params["product_code"])
-        
-        if standardized_params.get("product_name"):
-            query += " AND product_name ILIKE %s"
-            query_params.append(f"%{standardized_params['product_name']}%")
-        
-        query += " LIMIT 50"
-        
-        print(f"[get_product_details] Executing query: {query}")
-        print(f"[get_product_details] Query params: {query_params}")
-        
-        cursor.execute(query, query_params)
-        products = cursor.fetchall()
-        cursor.close()
-        conn.close()
-        
-        print(f"[get_product_details] Found {len(products)} products")
+        # データベース検索（簡潔化）
+        products = await execute_product_search_query(standardized_params)
         
         # 結果テキスト化（関数化）
         result_text = await format_product_search_results(products)
         
+        # レスポンス作成
         execution_time = time.time() - start_time
-        
-        # デバッグレスポンス作成
         debug_response = {
-            "executed_query": query,
-            "query_params": query_params,
             "standardize_prompt": full_prompt_text,
             "standardize_response": standardize_response,
             "standardize_parameter": standardize_parameter,
@@ -151,10 +122,7 @@ async def get_product_details(params: Dict[str, Any]) -> MCPResponse:
             "results_count": len(products)
         }
         
-        return MCPResponse(
-            result=result_text,
-            debug_response=debug_response
-        )
+        return MCPResponse(result=result_text, debug_response=debug_response)
         
     except Exception as e:
         logger.error(f"Product search error: {e}")
@@ -167,3 +135,33 @@ async def get_product_details(params: Dict[str, Any]) -> MCPResponse:
                 "execution_time_ms": round(execution_time * 1000, 2)
             }
         )
+
+async def execute_product_search_query(standardized_params: Dict[str, Any]) -> list:
+    """商品検索クエリ実行（分離された関数）"""
+    conn = get_db_connection()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    
+    query = "SELECT * FROM products WHERE 1=1"
+    query_params = []
+    
+    # 検索条件構築
+    if standardized_params.get("product_code"):
+        query += " AND product_code = %s"
+        query_params.append(standardized_params["product_code"])
+    
+    if standardized_params.get("product_name"):
+        query += " AND product_name ILIKE %s"
+        query_params.append(f"%{standardized_params['product_name']}%")
+    
+    query += " LIMIT 50"
+    
+    print(f"[execute_product_search_query] Executing query: {query}")
+    print(f"[execute_product_search_query] Query params: {query_params}")
+    
+    cursor.execute(query, query_params)
+    products = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    
+    print(f"[execute_product_search_query] Found {len(products)} products")
+    return products

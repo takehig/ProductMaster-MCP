@@ -51,7 +51,7 @@ class LLMUtil:
             return error_response, full_prompt, error_response, execution_time
     
     async def call_claude(self, system_prompt: str, user_message: str, 
-                         max_tokens: int = 1000, temperature: float = 0.1) -> str:
+                         max_tokens: int = 4000, temperature: float = 0.1) -> str:
         """
         Claude API呼び出し（基本）
         
@@ -91,7 +91,7 @@ class LLMUtil:
             print(f"[ERROR] Bedrock call failed: {e}")
             return f"LLMエラー: {str(e)}"
     
-    async def call_llm_simple(self, full_prompt: str, max_tokens: int = 1000, temperature: float = 0.1) -> Tuple[str, float]:
+    async def call_llm_simple(self, full_prompt: str, max_tokens: int = 4000, temperature: float = 0.1) -> Tuple[str, float]:
         """純粋なLLM呼び出し - 完全なプロンプトを受け取りレスポンスを返す"""
         start_time = time.time()
         
