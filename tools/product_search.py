@@ -89,33 +89,25 @@ async def format_product_search_results(products: list) -> str:
     try:
         system_prompt = await get_prompt_from_management("format_product_search_results")
         print(f"[format_product_search_results] SystemPrompt Management からプロンプト取得成功")
+        
+        # 正常系: LLM処理実行
+        data_json = json.dumps(products, ensure_ascii=False, default=str, indent=2)
+        full_prompt = f"{system_prompt}\n\nData:\n{data_json}"
+        
+        result_text, execution_time = await llm_util.call_llm_simple(full_prompt)
+        print(f"[format_product_search_results] Execution time: {execution_time}ms")
+        print(f"[format_product_search_results] Formatted result: {result_text[:200]}...")
+        
+        return result_text
+        
     except Exception as e:
         print(f"[format_product_search_results] SystemPrompt Management 取得失敗: {e}")
-        # フォールバック: 固定プロンプト使用
-        system_prompt = """商品検索の結果配列を、読みやすいテキスト形式に変換してください。
-
-要求:
-1. 商品コード、商品名を明確に記載
-2. 商品タイプ、通貨、リスクレベルを含める
-3. 見やすい形式で整理
-
-例:
-商品検索結果 (3件):
-1. [BOND001] 国債10年 (債券/JPY/低リスク)
-2. [FUND002] 株式投信A (投資信託/JPY/中リスク)
-3. [STOCK003] 米国株ETF (株式/USD/高リスク)"""
-        print(f"[format_product_search_results] フォールバックプロンプト使用")
-
-    # 呼び出し元でデータ結合（責任明確化）
-    data_json = json.dumps(products, ensure_ascii=False, default=str, indent=2)
-    full_prompt = f"{system_prompt}\n\nData:\n{data_json}"
-    
-    # 完全プロンプトでLLM呼び出し
-    result_text, execution_time = await llm_util.call_llm_simple(full_prompt)
-    print(f"[format_product_search_results] Execution time: {execution_time}ms")
-    print(f"[format_product_search_results] Formatted result: {result_text[:200]}...")
-    
-    return result_text
+        
+        # 異常系: 固定エラーメッセージ返却
+        error_message = f"商品検索結果フォーマットエラー: SystemPrompt Management接続失敗 ({str(e)})"
+        print(f"[format_product_search_results] 固定エラーメッセージ返却: {error_message}")
+        
+        return error_message
 
 async def get_product_details(params: Dict[str, Any]) -> MCPResponse:
     """商品詳細情報取得（統一パターン・簡潔版）"""
