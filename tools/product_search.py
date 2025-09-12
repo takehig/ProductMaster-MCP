@@ -17,7 +17,7 @@ async def get_prompt_from_management(prompt_name: str) -> str:
     response = requests.get(f"http://localhost:8007/api/prompts/{prompt_name}")
     if response.status_code == 200:
         prompt_data = response.json()
-        return prompt_data.get("content", "")
+        return prompt_data.get("prompt_text", "")
     else:
         raise Exception(f"HTTP {response.status_code}")
 
