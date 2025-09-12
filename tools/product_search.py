@@ -15,10 +15,7 @@ async def standardize_product_search_arguments(raw_input: str) -> Tuple[Dict[str
     """商品検索の引数を標準化（SystemPrompt Management統合）"""
     print(f"[standardize_product_search_arguments] Raw input: {raw_input}")
     
-    # SystemPrompt Management からプロンプト取得を試行
-    system_prompt = ""
-    prompt_source = ""
-    
+    # SystemPrompt Management からプロンプト取得
     try:
         import httpx
         async with httpx.AsyncClient() as client:
@@ -26,44 +23,40 @@ async def standardize_product_search_arguments(raw_input: str) -> Tuple[Dict[str
             if response.status_code == 200:
                 prompt_data = response.json()
                 system_prompt = prompt_data.get("content", "")
-                prompt_source = "SystemPrompt Management v2.0.0"
                 print(f"[standardize_product_search_arguments] SystemPrompt Management からプロンプト取得成功")
+                
+                # 正常系: LLM処理実行
+                llm_response = await llm_util.call_claude(system_prompt, raw_input)
+                print(f"[standardize_product_search_arguments] LLM Raw Response: {llm_response}")
+                
+                full_prompt_text = f"SystemPrompt Management v2.0.0\n\n{system_prompt}\n\nUser Input: {raw_input}"
+                
+                try:
+                    standardized_params = json.loads(llm_response)
+                    print(f"[standardize_product_search_arguments] Final Standardized Output: {standardized_params}")
+                    return standardized_params, full_prompt_text, llm_response, str(standardized_params)
+                except json.JSONDecodeError as e:
+                    print(f"[standardize_product_search_arguments] JSON parse error: {e}")
+                    return {}, full_prompt_text, llm_response, f"JSONパースエラー: {str(e)}"
             else:
                 raise Exception(f"HTTP {response.status_code}")
+                
     except Exception as e:
         print(f"[standardize_product_search_arguments] SystemPrompt Management 取得失敗: {e}")
-        # エラー情報をプロンプトとして構成
-        system_prompt = f"""SystemPrompt Management接続エラー（{str(e)}）のため、基本的な商品検索パラメータ抽出を実行します。
-
-商品検索の条件を以下のJSON形式で正規化してください：
-
-入力例: "債券 満期2025年"
-出力例: {{"product_code": null, "product_name": "債券", "maturity_date": "2025"}}
-
-入力例: "PROD001"  
-出力例: {{"product_code": "PROD001", "product_name": null, "maturity_date": null}}
-
-必須フィールド:
-- product_code: 商品コード（明示的な場合のみ）
-- product_name: 商品名（部分一致用）
-- maturity_date: 満期日（YYYY形式）
-- risk_level: リスクレベル
-
-JSON形式で出力してください。"""
-        prompt_source = f"Fallback (SystemPrompt Management Error: {str(e)})"
-    
-    response = await llm_util.call_claude(system_prompt, raw_input)
-    print(f"[standardize_product_search_arguments] LLM Raw Response: {response}")
-    
-    full_prompt_text = f"Prompt Source: {prompt_source}\n\n{system_prompt}\n\nUser Input: {raw_input}"
-    
-    try:
-        standardized_params = json.loads(response)
-        print(f"[standardize_product_search_arguments] Final Standardized Output: {standardized_params}")
-        return standardized_params, full_prompt_text, response, str(standardized_params)
-    except json.JSONDecodeError as e:
-        print(f"[standardize_product_search_arguments] JSON parse error: {e}")
-        return {}, full_prompt_text, response, f"JSONパースエラー: {str(e)}"
+        
+        # 異常系: 固定パラメータ返却
+        error_params = {
+            "product_code": None,
+            "product_name": "システムプロンプト取得エラー",
+            "maturity_date": None,
+            "risk_level": None
+        }
+        
+        error_message = f"SystemPrompt Management Error: {str(e)}"
+        full_prompt_text = f"Error: {error_message}\nOriginal Input: {raw_input}"
+        
+        print(f"[standardize_product_search_arguments] 固定エラーパラメータ返却: {error_params}")
+        return error_params, full_prompt_text, error_message, str(error_params)
 
 async def format_product_search_results(products: list) -> str:
     """商品検索結果をテキスト化"""
