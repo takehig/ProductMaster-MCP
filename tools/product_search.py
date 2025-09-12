@@ -11,52 +11,75 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+async def get_prompt_from_management(prompt_name: str) -> str:
+    """SystemPrompt Management からプロンプト取得"""
+    import httpx
+    async with httpx.AsyncClient() as client:
+        response = await client.get(f"http://localhost:8007/api/prompts/{prompt_name}")
+        if response.status_code == 200:
+            prompt_data = response.json()
+            return prompt_data.get("content", "")
+        else:
+            raise Exception(f"HTTP {response.status_code}")
+
 async def standardize_product_search_arguments(raw_input: str) -> Tuple[Dict[str, Any], str, str, str]:
-    """商品検索の引数を標準化（SystemPrompt Management統合）"""
+    """商品検索の引数を標準化（2段階処理・debug_response拡張）"""
     print(f"[standardize_product_search_arguments] Raw input: {raw_input}")
     
-    # SystemPrompt Management からプロンプト取得
+    debug_response = {
+        "stage1_input": raw_input,
+        "stage1_prompt": "",
+        "stage1_response": "",
+        "stage2_input": "",
+        "stage2_prompt": "",
+        "stage2_response": "",
+        "final_params": {}
+    }
+    
     try:
-        import httpx
-        async with httpx.AsyncClient() as client:
-            response = await client.get("http://localhost:8007/api/prompts/extract_product_info_pre")
-            if response.status_code == 200:
-                prompt_data = response.json()
-                system_prompt = prompt_data.get("content", "")
-                print(f"[standardize_product_search_arguments] SystemPrompt Management からプロンプト取得成功")
-                
-                # 正常系: LLM処理実行
-                llm_response = await llm_util.call_claude(system_prompt, raw_input)
-                print(f"[standardize_product_search_arguments] LLM Raw Response: {llm_response}")
-                
-                full_prompt_text = f"SystemPrompt Management v2.0.0\n\n{system_prompt}\n\nUser Input: {raw_input}"
-                
-                try:
-                    standardized_params = json.loads(llm_response)
-                    print(f"[standardize_product_search_arguments] Final Standardized Output: {standardized_params}")
-                    return standardized_params, full_prompt_text, llm_response, str(standardized_params)
-                except json.JSONDecodeError as e:
-                    print(f"[standardize_product_search_arguments] JSON parse error: {e}")
-                    return {}, full_prompt_text, llm_response, f"JSONパースエラー: {str(e)}"
-            else:
-                raise Exception(f"HTTP {response.status_code}")
-                
-    except Exception as e:
-        print(f"[standardize_product_search_arguments] SystemPrompt Management 取得失敗: {e}")
+        # 第1段階: キーワード抽出
+        stage1_prompt = await get_prompt_from_management("extract_product_keywords_pre")
+        debug_response["stage1_prompt"] = stage1_prompt
+        print(f"[standardize_product_search_arguments] Stage1 prompt取得成功")
         
-        # 異常系: 固定パラメータ返却
+        stage1_response = await llm_util.call_claude(stage1_prompt, raw_input)
+        debug_response["stage1_response"] = stage1_response
+        print(f"[standardize_product_search_arguments] Stage1 LLM Response: {stage1_response}")
+        
+        # 第2段階: パラメータ化
+        stage2_prompt = await get_prompt_from_management("extract_product_info_pre")
+        debug_response["stage2_prompt"] = stage2_prompt
+        debug_response["stage2_input"] = stage1_response  # キーワードをパラメータ化の入力に
+        print(f"[standardize_product_search_arguments] Stage2 prompt取得成功")
+        
+        stage2_response = await llm_util.call_claude(stage2_prompt, stage1_response)
+        debug_response["stage2_response"] = stage2_response
+        print(f"[standardize_product_search_arguments] Stage2 LLM Response: {stage2_response}")
+        
+        # JSON解析
+        standardized_params = json.loads(stage2_response)
+        debug_response["final_params"] = standardized_params
+        
+        full_prompt_text = f"Stage1: Keywords Extraction\nStage2: Parameter Standardization"
+        
+        print(f"[standardize_product_search_arguments] Final Standardized Output: {standardized_params}")
+        return standardized_params, full_prompt_text, stage2_response, json.dumps(debug_response, ensure_ascii=False, indent=2)
+        
+    except Exception as e:
+        print(f"[standardize_product_search_arguments] Error: {e}")
+        
+        # エラー時も既存ルール維持
         error_params = {
             "product_code": None,
-            "product_name": "システムプロンプト取得エラー",
+            "product_name": f"処理エラー: {str(e)}",
             "maturity_date": None,
             "risk_level": None
         }
         
-        error_message = f"SystemPrompt Management Error: {str(e)}"
-        full_prompt_text = f"Error: {error_message}\nOriginal Input: {raw_input}"
+        debug_response["error"] = str(e)
+        debug_response["final_params"] = error_params
         
-        print(f"[standardize_product_search_arguments] 固定エラーパラメータ返却: {error_params}")
-        return error_params, full_prompt_text, error_message, str(error_params)
+        return error_params, f"Error: {str(e)}", str(e), json.dumps(debug_response, ensure_ascii=False, indent=2)
 
 async def format_product_search_results(products: list) -> str:
     """商品検索結果をテキスト化"""
