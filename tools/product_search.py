@@ -13,14 +13,13 @@ logger = logging.getLogger(__name__)
 
 async def get_prompt_from_management(prompt_name: str) -> str:
     """SystemPrompt Management からプロンプト取得"""
-    import httpx
-    async with httpx.AsyncClient() as client:
-        response = await client.get(f"http://localhost:8007/api/prompts/{prompt_name}")
-        if response.status_code == 200:
-            prompt_data = response.json()
-            return prompt_data.get("content", "")
-        else:
-            raise Exception(f"HTTP {response.status_code}")
+    import requests
+    response = requests.get(f"http://localhost:8007/api/prompts/{prompt_name}")
+    if response.status_code == 200:
+        prompt_data = response.json()
+        return prompt_data.get("content", "")
+    else:
+        raise Exception(f"HTTP {response.status_code}")
 
 async def standardize_product_search_arguments(raw_input: str) -> Tuple[Dict[str, Any], str, str, str]:
     """商品検索の引数を標準化（2段階処理・debug_response拡張）"""
