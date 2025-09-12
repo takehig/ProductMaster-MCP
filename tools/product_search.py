@@ -81,12 +81,18 @@ async def standardize_product_search_arguments(raw_input: str) -> Tuple[Dict[str
         return error_params, f"Error: {str(e)}", str(e), json.dumps(debug_response, ensure_ascii=False, indent=2)
 
 async def format_product_search_results(products: list) -> str:
-    """商品検索結果をテキスト化"""
+    """商品検索結果をテキスト化（SystemPrompt Management統合）"""
     if not products:
         return "商品検索結果: 該当する商品はありませんでした。"
     
-    # システムプロンプト（将来的にはデータベース化）
-    system_prompt = """商品検索の結果配列を、読みやすいテキスト形式に変換してください。
+    # SystemPrompt Management からプロンプト取得
+    try:
+        system_prompt = await get_prompt_from_management("format_product_search_results")
+        print(f"[format_product_search_results] SystemPrompt Management からプロンプト取得成功")
+    except Exception as e:
+        print(f"[format_product_search_results] SystemPrompt Management 取得失敗: {e}")
+        # フォールバック: 固定プロンプト使用
+        system_prompt = """商品検索の結果配列を、読みやすいテキスト形式に変換してください。
 
 要求:
 1. 商品コード、商品名を明確に記載
@@ -98,6 +104,7 @@ async def format_product_search_results(products: list) -> str:
 1. [BOND001] 国債10年 (債券/JPY/低リスク)
 2. [FUND002] 株式投信A (投資信託/JPY/中リスク)
 3. [STOCK003] 米国株ETF (株式/USD/高リスク)"""
+        print(f"[format_product_search_results] フォールバックプロンプト使用")
 
     # 呼び出し元でデータ結合（責任明確化）
     data_json = json.dumps(products, ensure_ascii=False, default=str, indent=2)
