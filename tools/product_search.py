@@ -16,6 +16,9 @@ async def standardize_product_search_arguments(raw_input: str) -> Tuple[Dict[str
     print(f"[standardize_product_search_arguments] Raw input: {raw_input}")
     
     # SystemPrompt Management からプロンプト取得を試行
+    system_prompt = ""
+    prompt_source = ""
+    
     try:
         import httpx
         async with httpx.AsyncClient() as client:
@@ -23,22 +26,22 @@ async def standardize_product_search_arguments(raw_input: str) -> Tuple[Dict[str
             if response.status_code == 200:
                 prompt_data = response.json()
                 system_prompt = prompt_data.get("content", "")
+                prompt_source = "SystemPrompt Management v2.0.0"
                 print(f"[standardize_product_search_arguments] SystemPrompt Management からプロンプト取得成功")
             else:
-                raise Exception(f"SystemPrompt Management API error: {response.status_code}")
+                raise Exception(f"HTTP {response.status_code}")
     except Exception as e:
         print(f"[standardize_product_search_arguments] SystemPrompt Management 取得失敗: {e}")
-        # フォールバック: ハードコードされたプロンプト使用
-        system_prompt = """商品検索の条件を以下のJSON形式で正規化してください。
+        # エラー情報をプロンプトとして構成
+        system_prompt = f"""SystemPrompt Management接続エラー（{str(e)}）のため、基本的な商品検索パラメータ抽出を実行します。
+
+商品検索の条件を以下のJSON形式で正規化してください：
 
 入力例: "債券 満期2025年"
-出力例: {"product_code": null, "product_name": "債券", "maturity_date": "2025"}
+出力例: {{"product_code": null, "product_name": "債券", "maturity_date": "2025"}}
 
-入力例: "PROD001"
-出力例: {"product_code": "PROD001", "product_name": null, "maturity_date": null}
-
-入力例: "投資信託 リスク低"
-出力例: {"product_code": null, "product_name": "投資信託", "risk_level": "低", "maturity_date": null}
+入力例: "PROD001"  
+出力例: {{"product_code": "PROD001", "product_name": null, "maturity_date": null}}
 
 必須フィールド:
 - product_code: 商品コード（明示的な場合のみ）
@@ -47,12 +50,12 @@ async def standardize_product_search_arguments(raw_input: str) -> Tuple[Dict[str
 - risk_level: リスクレベル
 
 JSON形式で出力してください。"""
-        print(f"[standardize_product_search_arguments] フォールバックプロンプト使用")
+        prompt_source = f"Fallback (SystemPrompt Management Error: {str(e)})"
     
     response = await llm_util.call_claude(system_prompt, raw_input)
     print(f"[standardize_product_search_arguments] LLM Raw Response: {response}")
     
-    full_prompt_text = f"{system_prompt}\n\nUser Input: {raw_input}"
+    full_prompt_text = f"Prompt Source: {prompt_source}\n\n{system_prompt}\n\nUser Input: {raw_input}"
     
     try:
         standardized_params = json.loads(response)
