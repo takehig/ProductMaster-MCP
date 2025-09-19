@@ -12,6 +12,19 @@
             },
             "function_name": "get_product_details",
             "module_path": "tools.product_search"
+        },
+        {
+            "name": "search_products_by_name_fuzzy",
+            "description": "商品名による曖昧検索。商品名に含まれる情報のみで類推検索を行います。商品名に記載されていない情報（業績、財務状況等）は検索対象外です。",
+            "usage_context": "自然言語で商品を検索したい時に使用。例：「米国のハイテク株」「日本の自動車関連商品」「債券投資商品」等",
+            "parameters": {
+                "text_input": {
+                    "type": "string",
+                    "description": "自然言語による検索要望。商品名から類推可能な条件のみ有効（地域、業界、商品種別等）"
+                }
+            },
+            "function_name": "search_products_by_name_fuzzy",
+            "module_path": "tools.fuzzy_name_search"
         }
     ]
 }
