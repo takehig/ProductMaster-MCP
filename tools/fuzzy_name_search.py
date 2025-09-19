@@ -157,14 +157,11 @@ async def search_products_by_name_fuzzy(params: Dict[str, Any]) -> MCPResponse:
         logger.info(f"[search_products_by_name_fuzzy] === FUNCTION COMPLETE === ({total_execution_time}ms)")
         
         return MCPResponse(
-            content=[{
-                "type": "text",
-                "text": final_result
-            }],
-            isError=False,
-            _meta={
-                "debug_info": tool_debug
-            }
+            result={
+                "content": [{"type": "text", "text": final_result}],
+                "isError": False
+            },
+            debug_response=tool_debug
         )
         
     except Exception as e:
@@ -177,12 +174,10 @@ async def search_products_by_name_fuzzy(params: Dict[str, Any]) -> MCPResponse:
         error_message = f"商品名曖昧検索でエラーが発生しました: {str(e)}"
         
         return MCPResponse(
-            content=[{
-                "type": "text", 
-                "text": error_message
-            }],
-            isError=True,
-            _meta={
-                "debug_info": tool_debug
-            }
+            result={
+                "content": [{"type": "text", "text": error_message}],
+                "isError": True
+            },
+            error=error_message,
+            debug_response=tool_debug
         )
