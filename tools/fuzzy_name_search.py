@@ -107,12 +107,30 @@ async def search_products_by_name_fuzzy(params: Dict[str, Any]) -> MCPResponse:
         tool_debug["step3_filter_products"]["llm_response"] = response
         tool_debug["step3_filter_products"]["execution_time_ms"] = execution_time
         
+        # JSON解析の改善
         try:
-            filtered_products = json.loads(response)
-            if not isinstance(filtered_products, list):
+            # 説明文を除去してJSON部分のみ抽出
+            response_clean = response.strip()
+            
+            # JSON配列の開始位置を探す
+            json_start = response_clean.find('[')
+            json_end = response_clean.rfind(']')
+            
+            if json_start != -1 and json_end != -1 and json_end > json_start:
+                json_part = response_clean[json_start:json_end+1]
+                filtered_products = json.loads(json_part)
+                if not isinstance(filtered_products, list):
+                    filtered_products = []
+            else:
+                # JSON配列が見つからない場合
+                logger.error(f"No JSON array found in LLM response: {response}")
                 filtered_products = []
+                
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse LLM response as JSON: {e}, response: {response}")
+            filtered_products = []
+        except Exception as e:
+            logger.error(f"Unexpected error in JSON parsing: {e}, response: {response}")
             filtered_products = []
         
         tool_debug["step3_filter_products"]["filtered_products"] = filtered_products
