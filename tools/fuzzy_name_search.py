@@ -59,7 +59,7 @@ async def search_products_by_name_fuzzy(params: Dict[str, Any]) -> MCPResponse:
         
         # STEP 1: 検索条件抽出
         logger.info(f"[search_products_by_name_fuzzy] STEP 1: Extracting search criteria")
-        system_prompt = await get_system_prompt("extract_search_criteria")
+        system_prompt = await get_system_prompt("fuzzy_search_extract_criteria")
         full_prompt = f"{system_prompt}\n\nUser Input: {user_input}"
         tool_debug["step1_extract_criteria"]["llm_request"] = full_prompt
         
@@ -98,7 +98,7 @@ async def search_products_by_name_fuzzy(params: Dict[str, Any]) -> MCPResponse:
         
         # STEP 3: 商品フィルタリング
         logger.info(f"[search_products_by_name_fuzzy] STEP 3: Filtering products")
-        system_prompt = await get_system_prompt("filter_products_by_criteria")
+        system_prompt = await get_system_prompt("fuzzy_search_filter_products")
         products_json = json.dumps(formatted_products, ensure_ascii=False)
         full_prompt = f"{system_prompt}\n\nUser Input: 検索条件: {search_criteria}\n商品リスト: {products_json}"
         tool_debug["step3_filter_products"]["llm_request"] = full_prompt
@@ -138,7 +138,7 @@ async def search_products_by_name_fuzzy(params: Dict[str, Any]) -> MCPResponse:
         
         # STEP 4: 結果整形
         logger.info(f"[search_products_by_name_fuzzy] STEP 4: Formatting results")
-        system_prompt = await get_system_prompt("format_search_results")
+        system_prompt = await get_system_prompt("fuzzy_search_format_results")
         products_json = json.dumps(filtered_products, ensure_ascii=False)
         full_prompt = f"{system_prompt}\n\nUser Input: {products_json}"
         tool_debug["step4_format_results"]["llm_request"] = full_prompt
