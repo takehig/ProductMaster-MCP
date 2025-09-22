@@ -13,60 +13,8 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-async def format_product_search_results(products: list, debug_info: dict) -> str:
-    """商品検索結果を整形"""
-    try:
-        # SystemPrompt Management からプロンプト取得
-        system_prompt = await get_system_prompt("format_product_search_results")
-        debug_info["format_prompt"] = system_prompt
-        print(f"[format_product_search_results] SystemPrompt Management からプロンプト取得成功")
-        
-        # 商品データをJSON形式で準備
-        products_json = json.dumps(products, ensure_ascii=False, default=str)
-        full_prompt = f"{system_prompt}\n\n商品データ: {products_json}"
-        
-        debug_info["format_llm_request"] = full_prompt
-        
-        # LLM呼び出し
-        response, execution_time = await llm_util.call_llm_simple(full_prompt)
-        debug_info["format_llm_response"] = response
-        debug_info["format_execution_time_ms"] = execution_time
-        
-        print(f"[format_product_search_results] LLM整形完了 ({execution_time:.1f}ms)")
-        
-        return response.strip()
-        
-    except Exception as e:
-        error_message = f"商品検索結果の整形中にエラーが発生しました: {str(e)}"
-        debug_info["format_error"] = str(e)
-        print(f"[format_product_search_results] 固定エラーメッセージ返却: {error_message}")
-        
-        return error_message
-
-async def execute_product_search_query(product_ids: list, debug_info: dict) -> list:
-    """商品IDの配列から商品詳細を取得"""
-    conn = get_db_connection()
-    cursor = conn.cursor(cursor_factory=RealDictCursor)
-    
-    query = "SELECT * FROM products WHERE product_id = ANY(%s)"
-    query_params = [product_ids]
-    
-    debug_info["search_query"] = query
-    debug_info["search_params"] = query_params
-    
-    print(f"[execute_product_search_query] Executing query: {query}")
-    print(f"[execute_product_search_query] Query params: {product_ids}")
-    
-    cursor.execute(query, query_params)
-    products = cursor.fetchall()
-    cursor.close()
-    conn.close()
-    
-    print(f"[execute_product_search_query] Found {len(products)} products")
-    return products
-
 async def get_product_details_byid(params: Dict[str, Any]) -> MCPResponse:
-    """商品ID配列から詳細情報取得"""
+    """商品ID配列から詳細情報取得（メイン関数）"""
     start_time = time.time()
     debug_info = {}
     
@@ -134,3 +82,55 @@ async def get_product_details_byid(params: Dict[str, Any]) -> MCPResponse:
             error=error_message,
             debug_response=debug_info
         )
+
+async def execute_product_search_query(product_ids: list, debug_info: dict) -> list:
+    """商品IDの配列から商品詳細を取得（1番目に呼び出される関数）"""
+    conn = get_db_connection()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
+    
+    query = "SELECT * FROM products WHERE product_id = ANY(%s)"
+    query_params = [product_ids]
+    
+    debug_info["search_query"] = query
+    debug_info["search_params"] = query_params
+    
+    print(f"[execute_product_search_query] Executing query: {query}")
+    print(f"[execute_product_search_query] Query params: {product_ids}")
+    
+    cursor.execute(query, query_params)
+    products = cursor.fetchall()
+    cursor.close()
+    conn.close()
+    
+    print(f"[execute_product_search_query] Found {len(products)} products")
+    return products
+
+async def format_product_search_results(products: list, debug_info: dict) -> str:
+    """商品検索結果を整形（2番目に呼び出される関数）"""
+    try:
+        # SystemPrompt Management からプロンプト取得
+        system_prompt = await get_system_prompt("format_product_search_results")
+        debug_info["format_prompt"] = system_prompt
+        print(f"[format_product_search_results] SystemPrompt Management からプロンプト取得成功")
+        
+        # 商品データをJSON形式で準備
+        products_json = json.dumps(products, ensure_ascii=False, default=str)
+        full_prompt = f"{system_prompt}\n\n商品データ: {products_json}"
+        
+        debug_info["format_llm_request"] = full_prompt
+        
+        # LLM呼び出し
+        response, execution_time = await llm_util.call_llm_simple(full_prompt)
+        debug_info["format_llm_response"] = response
+        debug_info["format_execution_time_ms"] = execution_time
+        
+        print(f"[format_product_search_results] LLM整形完了 ({execution_time:.1f}ms)")
+        
+        return response.strip()
+        
+    except Exception as e:
+        error_message = f"商品検索結果の整形中にエラーが発生しました: {str(e)}"
+        debug_info["format_error"] = str(e)
+        print(f"[format_product_search_results] 固定エラーメッセージ返却: {error_message}")
+        
+        return error_message
