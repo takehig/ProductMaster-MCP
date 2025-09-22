@@ -31,13 +31,8 @@ async def get_product_details_byid(params: Dict[str, Any]) -> MCPResponse:
         print(f"[get_product_details_byid] === FUNCTION START ===")
         print(f"[get_product_details_byid] Received raw params: {params}")
         
-        # ID配列を抽出（カンマ区切りまたは配列形式を想定）
-        if isinstance(text_input, list):
-            product_ids = [int(id) for id in text_input]
-        else:
-            # 文字列からID抽出（例: "1,2,3" または "[1,2,3]"）
-            ids = re.findall(r'\d+', str(text_input))
-            product_ids = [int(id) for id in ids]
+        # LLMを使用してID配列を抽出
+        product_ids = await extract_product_ids_with_llm(text_input, debug_info)
         
         if not product_ids:
             return MCPResponse(
@@ -83,8 +78,43 @@ async def get_product_details_byid(params: Dict[str, Any]) -> MCPResponse:
             debug_response=debug_info
         )
 
+async def extract_product_ids_with_llm(text_input: str, debug_info: dict) -> List[int]:
+    """LLMを使用して商品ID配列を抽出（1番目に呼び出される関数）"""
+    try:
+        # SystemPrompt Management からプロンプト取得
+        system_prompt = await get_system_prompt("get_product_details_byid_extract_ids")
+        debug_info["extract_ids_prompt"] = system_prompt
+        print(f"[extract_product_ids_with_llm] SystemPrompt取得成功")
+        
+        # LLM呼び出し
+        response, execution_time = await llm_util.call_llm_simple(f"{system_prompt}\n\n入力テキスト: {text_input}")
+        debug_info["extract_ids_llm_response"] = response
+        debug_info["extract_ids_execution_time_ms"] = execution_time
+        
+        print(f"[extract_product_ids_with_llm] LLM応答: {response}")
+        
+        # LLM応答から数字を抽出
+        if response.strip().lower() == "なし":
+            return []
+        
+        # カンマ区切りの数字を抽出
+        ids = re.findall(r'\d+', response)
+        product_ids = [int(id) for id in ids if id.isdigit()]
+        
+        # 重複除去
+        product_ids = list(set(product_ids))
+        
+        print(f"[extract_product_ids_with_llm] 抽出されたID: {product_ids}")
+        
+        return product_ids
+        
+    except Exception as e:
+        debug_info["extract_ids_error"] = str(e)
+        print(f"[extract_product_ids_with_llm] Error: {e}")
+        return []
+
 async def execute_product_search_query(product_ids: list, debug_info: dict) -> list:
-    """商品IDの配列から商品詳細を取得（1番目に呼び出される関数）"""
+    """商品IDの配列から商品詳細を取得（2番目に呼び出される関数）"""
     conn = get_db_connection()
     cursor = conn.cursor(cursor_factory=RealDictCursor)
     
@@ -106,7 +136,7 @@ async def execute_product_search_query(product_ids: list, debug_info: dict) -> l
     return products
 
 async def format_product_search_results(products: list, debug_info: dict) -> str:
-    """商品検索結果を整形（2番目に呼び出される関数）"""
+    """商品検索結果を整形（3番目に呼び出される関数）"""
     try:
         # SystemPrompt Management からプロンプト取得
         system_prompt = await get_system_prompt("format_product_search_results")
