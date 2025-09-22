@@ -171,7 +171,7 @@ async def format_product_search_results(products: list, debug_info: dict) -> str
         # パースエラー情報がある場合の特別処理
         if debug_info.get("extract_ids_parsed_successfully") == False:
             parse_error_info = debug_info.get("extract_ids_final_result", "パースエラーが発生しました")
-            return f"商品ID抽出でエラーが発生しました: {parse_error_info}"
+            return f"商品ID抽出でエラーが発生しました: {parse_error_info}、回答は不正なものになる可能性があります。"
         
         # 通常の商品データ整形処理
         # SystemPrompt Management からプロンプト取得
