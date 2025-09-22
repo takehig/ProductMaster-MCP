@@ -155,10 +155,7 @@ async def search_products_by_name_fuzzy(params: Dict[str, Any]) -> MCPResponse:
         logger.info(f"[search_products_by_name_fuzzy] === FUNCTION COMPLETE === ({total_execution_time}ms)")
         
         return MCPResponse(
-            result={
-                "content": [{"type": "text", "text": final_result}],
-                "isError": False
-            },
+            result=final_result,
             debug_response=tool_debug
         )
         
@@ -172,10 +169,7 @@ async def search_products_by_name_fuzzy(params: Dict[str, Any]) -> MCPResponse:
         error_message = f"商品名曖昧検索でエラーが発生しました: {str(e)}"
         
         return MCPResponse(
-            result={
-                "content": [{"type": "text", "text": error_message}],
-                "isError": True
-            },
+            result=error_message,
             error=error_message,
             debug_response=tool_debug
         )
