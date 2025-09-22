@@ -30,8 +30,7 @@ async def search_products_by_name_fuzzy(params: Dict[str, Any]) -> MCPResponse:
         },
         "step2_api_call": {
             "api_url": None,
-            "products_count": 0,
-            "products_sample": None
+            "products_count": 0
         },
         "step3_filter_products": {
             "llm_request": None,
@@ -87,7 +86,6 @@ async def search_products_by_name_fuzzy(params: Dict[str, Any]) -> MCPResponse:
             products = products_data
         
         tool_debug["step2_api_call"]["products_count"] = len(products)
-        tool_debug["step2_api_call"]["products_sample"] = products[:3] if products else []
         logger.info(f"[search_products_by_name_fuzzy] Retrieved {len(products)} products")
         
         if not products:
