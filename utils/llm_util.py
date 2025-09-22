@@ -39,6 +39,10 @@ class LLMUtil:
         start_time = time.time()
         
         try:
+            # 防御構文: どんな入力でも文字列に変換
+            if not isinstance(full_prompt, str):
+                full_prompt = str(full_prompt)
+            
             # プロンプトからシステム部分とユーザー部分を分離
             if "\n\nUser Input:" in full_prompt:
                 system_part, user_part = full_prompt.split("\n\nUser Input:", 1)
@@ -76,6 +80,12 @@ class LLMUtil:
             str: Claude応答
         """
         try:
+            # 防御構文: どんな入力でも文字列に変換
+            if not isinstance(system_prompt, str):
+                system_prompt = str(system_prompt)
+            if not isinstance(user_message, str):
+                user_message = str(user_message)
+            
             body = {
                 "anthropic_version": "bedrock-2023-05-31",
                 "max_tokens": max_tokens,
