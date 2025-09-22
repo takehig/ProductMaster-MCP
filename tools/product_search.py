@@ -3,7 +3,8 @@
 import json
 import time
 from typing import Dict, Any, Tuple, List
-from utils.database import get_db_connection, get_system_prompt
+from utils.database import get_db_connection
+from utils.system_prompt import get_system_prompt
 from utils.llm_util import llm_util
 from models import MCPResponse
 from psycopg2.extras import RealDictCursor
