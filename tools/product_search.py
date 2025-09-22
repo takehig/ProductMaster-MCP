@@ -175,7 +175,7 @@ async def format_product_search_results(products: list, debug_info: dict) -> str
         
         # 通常の商品データ整形処理
         # SystemPrompt Management からプロンプト取得
-        system_prompt = await get_system_prompt("format_product_search_results")
+        system_prompt = await get_system_prompt("get_product_details_byid_format_result")
         debug_info["format_prompt"] = system_prompt
         print(f"[format_product_search_results] SystemPrompt Management からプロンプト取得成功")
         
