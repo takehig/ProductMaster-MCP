@@ -11,16 +11,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-async def get_prompt_from_management(prompt_name: str) -> str:
-    """SystemPrompt Management からプロンプト取得"""
-    import requests
-    response = requests.get(f"http://localhost:8007/api/prompts/{prompt_name}")
-    if response.status_code == 200:
-        prompt_data = response.json()
-        return prompt_data.get("prompt_text", "")
-    else:
-        raise Exception(f"HTTP {response.status_code}")
-
 async def standardize_product_search_arguments(raw_input: str, debug_info: dict) -> Dict[str, Any]:
     """商品検索の引数を標準化（debug_info フラット化）"""
     print(f"[standardize_product_search_arguments] Raw input: {raw_input}")
@@ -29,7 +19,7 @@ async def standardize_product_search_arguments(raw_input: str, debug_info: dict)
     
     try:
         # 第1段階: キーワード抽出
-        stage1_prompt = await get_prompt_from_management("extract_product_keywords_pre")
+        stage1_prompt = await get_system_prompt("extract_product_keywords_pre")
         debug_info["stage1_prompt"] = stage1_prompt
         print(f"[standardize_product_search_arguments] Stage1 prompt取得成功")
         
@@ -39,7 +29,7 @@ async def standardize_product_search_arguments(raw_input: str, debug_info: dict)
         
         # 第2段階: パラメータ化
         debug_info["stage2_input"] = stage1_response
-        stage2_prompt = await get_prompt_from_management("extract_product_info_pre")
+        stage2_prompt = await get_system_prompt("extract_product_info_pre")
         debug_info["stage2_prompt"] = stage2_prompt
         print(f"[standardize_product_search_arguments] Stage2 prompt取得成功")
         
@@ -77,7 +67,7 @@ async def format_product_search_results(products: list, debug_info: dict) -> str
     
     # SystemPrompt Management からプロンプト取得
     try:
-        system_prompt = await get_prompt_from_management("format_product_search_results")
+        system_prompt = await get_system_prompt("format_product_search_results")
         debug_info["format_prompt"] = system_prompt
         print(f"[format_product_search_results] SystemPrompt Management からプロンプト取得成功")
         
