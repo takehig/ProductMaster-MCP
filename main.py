@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from config import SERVER_CONFIG
 from models import MCPRequest, MCPResponse
 from tools_manager import ToolsManager
+from tools.risk_filter import filter_products_by_risk_and_type
 
 # ログ設定
 logging.basicConfig(level=logging.INFO)

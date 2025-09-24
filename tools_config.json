@@ -25,6 +25,19 @@
             },
             "function_name": "search_products_by_name_fuzzy",
             "module_path": "tools.fuzzy_name_search"
+        },
+        {
+            "name": "filter_products_by_risk_and_type",
+            "description": "リスクレベル・種別による商品フィルタリング",
+            "usage_context": "リスクレベル（低・中・高）と商品種別（株式・債券・投信等）による商品フィルタリング。テキストから条件を抽出し、該当する商品をID付きで返します。例：「低リスクの債券商品」「ハイリスクな株式」「中程度のリスクで投資信託」等",
+            "parameters": {
+                "text_input": {
+                    "type": "string",
+                    "description": "検索条件を含むテキスト（例：「低リスクの債券商品」「ハイリスクな株式」）"
+                }
+            },
+            "function_name": "filter_products_by_risk_and_type",
+            "module_path": "tools.risk_filter"
         }
     ]
 }
