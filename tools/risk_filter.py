@@ -145,7 +145,7 @@ async def execute_sql_query(conditions: dict, tool_debug: dict) -> list:
 
 def build_risk_filter_query(conditions: dict) -> tuple:
     """検索条件からSQLクエリを構築"""
-    base_query = "SELECT product_code AS id, product_name, product_type, risk_level, description FROM products WHERE 1=1"
+    base_query = "SELECT product_code AS id, product_name, category_name, risk_level, description FROM products_with_category WHERE 1=1"
     params = []
     
     # リスクレベルフィルタ（数値配列）
@@ -155,11 +155,11 @@ def build_risk_filter_query(conditions: dict) -> tuple:
         base_query += f" AND risk_level IN ({placeholders})"
         params.extend(risk_levels)
     
-    # 商品種別フィルタ
+    # 商品種別フィルタ（日本語カテゴリ名で検索）
     if conditions.get("product_types"):
         types = conditions["product_types"]
         placeholders = ",".join(["%s"] * len(types))
-        base_query += f" AND product_type IN ({placeholders})"
+        base_query += f" AND category_name IN ({placeholders})"
         params.extend(types)
     
     base_query += " ORDER BY risk_level, product_name LIMIT 20"
