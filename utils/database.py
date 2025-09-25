@@ -15,21 +15,27 @@ def get_db_connection():
         logger.error(f"Database connection failed: {e}")
         raise
 
-async def execute_query(query: str, params: list = None):
+async def execute_query(query: str, params: list = None, debug_info: dict = None):
     """SQLクエリを実行して結果を返す"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         
         if params:
+            # パラメータ展開済みSQL生成
+            executable_sql = cursor.mogrify(query, params).decode('utf-8')
             cursor.execute(query, params)
         else:
+            executable_sql = query
             cursor.execute(query)
         
         results = cursor.fetchall()
-        
         cursor.close()
         conn.close()
+        
+        # デバッグ情報があれば executable_sql を設定
+        if debug_info is not None and "step2_sql_execution" in debug_info:
+            debug_info["step2_sql_execution"]["executable_sql"] = executable_sql
         
         # 辞書形式で返却
         return [dict(row) for row in results]

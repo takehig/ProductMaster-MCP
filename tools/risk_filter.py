@@ -137,8 +137,8 @@ async def execute_sql_query(conditions: dict, tool_debug: dict) -> list:
         tool_debug["step2_sql_execution"]["sql_query"] = query
         tool_debug["step2_sql_execution"]["sql_params"] = params
         
-        # SQL実行
-        results = await execute_query(query, params)
+        # SQL実行（tool_debugを参照渡しでexecutable_sql取得）
+        results = await execute_query(query, params, tool_debug)
         tool_debug["step2_sql_execution"]["results_count"] = len(results)
         
         return results
