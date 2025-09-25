@@ -26,6 +26,7 @@ async def filter_products_by_risk_and_type(params: Dict[str, Any]) -> MCPRespons
         "step2_sql_execution": {
             "sql_query": None,
             "sql_params": None,
+            "executable_sql": None,
             "results_count": 0,
             "execution_time_ms": 0
         },
