@@ -29,9 +29,15 @@ async def execute_query(query: str, params: list = None, debug_info: dict = None
         if params:
             # パラメータ展開済みSQL生成
             executable_sql = cursor.mogrify(query, params).decode('utf-8')
+            # executable_sql を即座に設定（execute前）
+            if debug_info is not None and "step2_sql_execution" in debug_info:
+                debug_info["step2_sql_execution"]["executable_sql"] = executable_sql
             cursor.execute(query, params)
         else:
             executable_sql = query
+            # executable_sql を即座に設定（execute前）
+            if debug_info is not None and "step2_sql_execution" in debug_info:
+                debug_info["step2_sql_execution"]["executable_sql"] = executable_sql
             cursor.execute(query)
         
         results = cursor.fetchall()
@@ -40,7 +46,6 @@ async def execute_query(query: str, params: list = None, debug_info: dict = None
         
         # デバッグ情報設定（統一）
         if debug_info is not None and "step2_sql_execution" in debug_info:
-            debug_info["step2_sql_execution"]["executable_sql"] = executable_sql
             debug_info["step2_sql_execution"]["results_count"] = len(results)
         
         # 辞書形式で返却
