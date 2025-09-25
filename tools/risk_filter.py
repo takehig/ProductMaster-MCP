@@ -96,13 +96,30 @@ async def filter_products_by_risk_and_type(params: Dict[str, Any]) -> MCPRespons
             debug_response=tool_debug
         )
 
+async def get_active_categories() -> list:
+    """有効な商品カテゴリ一覧を取得"""
+    try:
+        query = "SELECT category_name FROM product_categories WHERE is_active = true ORDER BY display_order, category_name"
+        results = await execute_query(query)
+        return [row['category_name'] for row in results]
+    except Exception as e:
+        logger.error(f"カテゴリ取得エラー: {e}")
+        return ["債券", "投資信託", "株式", "その他"]  # フォールバック
+
 async def extract_search_conditions_with_llm(text_input: str, tool_debug: dict) -> dict:
     """STEP 1: テキストから検索条件を抽出"""
     try:
         llm_util = LLMUtil()
         
-        # SystemPrompt取得（文字列として直接返却される）
-        system_prompt = await get_system_prompt("filter_products_by_risk_and_type_extract_conditions")
+        # 有効な商品カテゴリを取得
+        categories = await get_active_categories()
+        categories_str = str(categories)
+        
+        # SystemPrompt基本部分を取得
+        base_system_prompt = await get_system_prompt("filter_products_by_risk_and_type_extract_conditions")
+        
+        # 動的に商品種別情報を追記
+        system_prompt = base_system_prompt + f"\n\n### 利用可能な商品種別\n- product_types: {categories_str} から該当するもの"
         
         if not system_prompt:
             logger.error("条件抽出用SystemPromptが取得できませんでした")
