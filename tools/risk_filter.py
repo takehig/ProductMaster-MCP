@@ -101,9 +101,8 @@ async def extract_search_conditions_with_llm(text_input: str, tool_debug: dict) 
     try:
         llm_util = LLMUtil()
         
-        # SystemPrompt取得
-        system_prompt_data = await get_system_prompt("filter_products_by_risk_and_type_extract_conditions")
-        system_prompt = system_prompt_data.get("prompt_text", "")
+        # SystemPrompt取得（文字列として直接返却される）
+        system_prompt = await get_system_prompt("filter_products_by_risk_and_type_extract_conditions")
         
         if not system_prompt:
             logger.error("条件抽出用SystemPromptが取得できませんでした")
@@ -176,9 +175,8 @@ async def format_results_with_llm(results: list, original_text: str, conditions:
     try:
         llm_util = LLMUtil()
         
-        # SystemPrompt取得
-        system_prompt_data = await get_system_prompt("filter_products_by_risk_and_type_format_results")
-        system_prompt = system_prompt_data.get("prompt_text", "")
+        # SystemPrompt取得（文字列として直接返却される）
+        system_prompt = await get_system_prompt("filter_products_by_risk_and_type_format_results")
         
         if not system_prompt:
             logger.error("結果整形用SystemPromptが取得できませんでした")
