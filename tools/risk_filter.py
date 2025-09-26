@@ -120,7 +120,7 @@ async def extract_search_conditions_with_llm(text_input: str, tool_debug: dict) 
         base_system_prompt = await get_system_prompt("filter_products_by_risk_and_type_extract_conditions")
         
         # 動的に商品種別情報を追記
-        system_prompt = base_system_prompt + f"\n\n### 利用可能な商品種別\n- product_types: {categories_str} から該当するもの"
+        system_prompt = base_system_prompt + f"\n\n### 利用可能な商品種別\n- category_types: {categories_str} から該当するもの"
         
         if not system_prompt:
             logger.error("条件抽出用SystemPromptが取得できませんでした")
@@ -174,8 +174,8 @@ def build_risk_filter_query(conditions: dict) -> tuple:
         params.extend(risk_levels)
     
     # 商品種別フィルタ（日本語カテゴリ名で検索）
-    if conditions.get("product_types"):
-        types = conditions["product_types"]
+    if conditions.get("category_types"):
+        types = conditions["category_types"]
         placeholders = ",".join(["%s"] * len(types))
         base_query += f" AND category_name IN ({placeholders})"
         params.extend(types)
